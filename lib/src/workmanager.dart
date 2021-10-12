@@ -107,6 +107,8 @@ class Workmanager {
   /// ```
   static const String iOSBackgroundProcessingTask =
       "workmanager.background.task";
+  static const String iOSBackgroundProcessingPeriodicTask =
+      "workmanager.background.task.periodic";
 
   static bool _isInDebugMode = false;
 
@@ -152,6 +154,37 @@ class Workmanager {
     }
   }
 
+  /**
+   * Only support iOS
+   */
+  Future<void> iOSRegisterOneOffTask({
+    /// Configures a initial delay.
+    ///
+    /// The delay configured here is not guaranteed. The underlying system may
+    /// decide to schedule the ask a lot later.
+    final Duration initialDelay = Duration.zero,
+
+    /// Fully supported on Android, but only partially supported on iOS.
+    /// See [Constraints] for details.
+    final Constraints? constraints,
+    final BackoffPolicy? backoffPolicy,
+    final Duration backoffPolicyDelay = Duration.zero,
+    final Map<String, dynamic>? inputData,
+  }) async =>
+      await _foregroundChannel.invokeMethod(
+        "registerOneOffTask",
+        JsonMapperHelper.toRegisterMethodArgument(
+          isInDebugMode: _isInDebugMode,
+          uniqueName: iOSBackgroundProcessingTask,
+          taskName: iOSBackgroundProcessingTask,
+          initialDelay: initialDelay,
+          constraints: constraints,
+          backoffPolicy: backoffPolicy,
+          backoffPolicyDelay: backoffPolicyDelay,
+          inputData: inputData,
+        ),
+      );
+
   /// Schedule a one off task
   /// A [uniqueName] is required so only one task can be registered.
   /// The [taskName] is the value that will be returned in the [BackgroundTaskHandler]
@@ -190,6 +223,32 @@ class Workmanager {
           taskName: taskName,
           tag: tag,
           existingWorkPolicy: existingWorkPolicy,
+          initialDelay: initialDelay,
+          constraints: constraints,
+          backoffPolicy: backoffPolicy,
+          backoffPolicyDelay: backoffPolicyDelay,
+          inputData: inputData,
+        ),
+      );
+
+  /**
+   * Only support iOS
+   */
+  Future<void> iOSRegisterPeriodicTask({
+    final Duration? frequency,
+    final Duration initialDelay = Duration.zero,
+    final Constraints? constraints,
+    final BackoffPolicy? backoffPolicy,
+    final Duration backoffPolicyDelay = Duration.zero,
+    final Map<String, dynamic>? inputData,
+  }) async =>
+      await _foregroundChannel.invokeMethod(
+        "registerPeriodicTask",
+        JsonMapperHelper.toRegisterMethodArgument(
+          isInDebugMode: _isInDebugMode,
+          uniqueName: iOSBackgroundProcessingPeriodicTask,
+          taskName: iOSBackgroundProcessingPeriodicTask,
+          frequency: frequency,
           initialDelay: initialDelay,
           constraints: constraints,
           backoffPolicy: backoffPolicy,

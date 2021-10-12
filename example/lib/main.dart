@@ -18,6 +18,8 @@ const simplePeriodic1HourTask = "simplePeriodic1HourTask";
 
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    print("Workmanager executeTask $task");
+
     switch (task) {
       case simpleTaskKey:
         print("$simpleTaskKey was executed. inputData = $inputData");
@@ -111,6 +113,7 @@ class _MyAppState extends State<MyApp> {
                     callbackDispatcher,
                     isInDebugMode: true,
                   );
+                  print("Start the Flutter background service");
                 },
               ),
               SizedBox(height: 16),
@@ -124,17 +127,19 @@ class _MyAppState extends State<MyApp> {
                 platform: _Platform.ios,
                 child: Text("Perform a BG Task"),
                 onPressed: () {
-                  Workmanager().registerOneOffTask(
-                    "1",
-                    simpleTaskKey,
-                    inputData: <String, dynamic>{
-                      'int': 1,
-                      'bool': true,
-                      'double': 1.0,
-                      'string': 'string',
-                      'array': [1, 2, 3],
-                    },
+                  Workmanager().iOSRegisterOneOffTask();
+                  print("Perform a BG Task");
+                },
+              ),
+
+              PlatformEnabledButton(
+                platform: _Platform.ios,
+                child: Text("Perform a BG Task registerPeriodicTask"),
+                onPressed: () {
+                  Workmanager().iOSRegisterPeriodicTask(
+                    frequency: Duration(minutes: 1),
                   );
+                  print("Perform a BG Task registerPeriodicTask");
                 },
               ),
 

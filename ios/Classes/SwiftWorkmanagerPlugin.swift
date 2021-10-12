@@ -14,8 +14,14 @@ public class SwiftWorkmanagerPlugin: FlutterPluginAppLifeCycleDelegate {
     static let identifier = "be.tramckrijte.workmanager"
 
     static let defaultBGProcessingTaskIdentifier = "workmanager.background.task"
+    static let defaultBGProcessingPeriodicTaskIdentifier = "workmanager.background.task.periodic"
 
     private static var flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?
+    
+    
+    var initialDelaySeconds: Int64?
+    var requiresCharging = false
+    var requiresNetworkConnectivity = false
 
     private struct ForegroundMethodChannel {
         static let channelName = "\(SwiftWorkmanagerPlugin.identifier)/foreground_channel_work_manager"
@@ -30,6 +36,14 @@ public class SwiftWorkmanagerPlugin: FlutterPluginAppLifeCycleDelegate {
             }
             struct RegisterOneOffTask {
                 static let name = "\(RegisterOneOffTask.self)".lowercasingFirst
+                enum Arguments: String {
+                    case initialDelaySeconds
+                    case networkType
+                    case requiresCharging
+                }
+            }
+            struct RegisterPeriodicTask {
+                static let name = "\(RegisterPeriodicTask.self)".lowercasingFirst
                 enum Arguments: String {
                     case initialDelaySeconds
                     case networkType
@@ -71,6 +85,23 @@ public class SwiftWorkmanagerPlugin: FlutterPluginAppLifeCycleDelegate {
         // when the operation completes
         operation.completionBlock = {
             task.setTaskCompleted(success: !operation.isCancelled)
+            
+            if task.identifier == SwiftWorkmanagerPlugin.defaultBGProcessingPeriodicTaskIdentifier {
+                if let initialDelaySeconds = self.initialDelaySeconds {
+                    let request = BGProcessingTaskRequest(
+                        identifier: SwiftWorkmanagerPlugin.defaultBGProcessingPeriodicTaskIdentifier
+                    )
+                    request.earliestBeginDate = Date(timeIntervalSinceNow: Double(initialDelaySeconds))
+                    request.requiresExternalPower = self.requiresCharging
+                    request.requiresNetworkConnectivity = self.requiresNetworkConnectivity
+                    
+                    do {
+                        try BGTaskScheduler.shared.submit(request)
+                    } catch {
+                        print("Re-register PeriodicTaskIdentifier fail")
+                    }
+                }
+            }
         }
 
         // Start the operation
@@ -82,6 +113,15 @@ public class SwiftWorkmanagerPlugin: FlutterPluginAppLifeCycleDelegate {
         if #available(iOS 13.0, *) {
             BGTaskScheduler.shared.register(
                 forTaskWithIdentifier: SwiftWorkmanagerPlugin.defaultBGProcessingTaskIdentifier,
+                using: nil
+            ) { task in
+                if let task = task as? BGProcessingTask {
+                    self.handleBGProcessingTask(task)
+                }
+            }
+            
+            BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: SwiftWorkmanagerPlugin.defaultBGProcessingPeriodicTaskIdentifier,
                 using: nil
             ) { task in
                 if let task = task as? BGProcessingTask {
@@ -183,7 +223,65 @@ extension SwiftWorkmanagerPlugin: FlutterPlugin {
             } else {
                 result(WMPError.unhandledMethod(call.method).asFlutterError)
             }
+            
+        case (ForegroundMethodChannel.Methods.RegisterPeriodicTask.name, let .some(arguments)):
+            if !validateCallbackHandle() {
+                result(
+                    FlutterError(
+                        code: "1",
+                        message: "You have not properly initialized the Flutter WorkManager Package. " +
+                            "You should ensure you have called the 'initialize' function first! " +
+                            "Example: \n" +
+                            "\n" +
+                            "`Workmanager().initialize(\n" +
+                            "  callbackDispatcher,\n" +
+                            " )`" +
+                            "\n" +
+                            "\n" +
+                            "The `callbackDispatcher` is a top level function. See example in repository.",
+                        details: nil
+                    )
+                )
+                return
+            }
 
+            if #available(iOS 13.0, *) {
+                let method = ForegroundMethodChannel.Methods.RegisterPeriodicTask.self
+                guard let initialDelaySeconds =
+                        arguments[method.Arguments.initialDelaySeconds.rawValue] as? Int64 else {
+                    result(WMPError.invalidParameters.asFlutterError)
+                    return
+                }
+                let request = BGProcessingTaskRequest(
+                    identifier: SwiftWorkmanagerPlugin.defaultBGProcessingPeriodicTaskIdentifier
+                )
+                let requiresCharging = arguments[method.Arguments.requiresCharging.rawValue] as? Bool ?? false
+
+                var requiresNetworkConnectivity = false
+                if let networkTypeInput = arguments[method.Arguments.networkType.rawValue] as? String,
+                   let networkType = NetworkType(fromDart: networkTypeInput),
+                   networkType == .connected || networkType == .metered {
+                    requiresNetworkConnectivity = true
+                }
+
+                request.earliestBeginDate = Date(timeIntervalSinceNow: Double(initialDelaySeconds))
+                request.requiresExternalPower = requiresCharging
+                request.requiresNetworkConnectivity = requiresNetworkConnectivity
+                
+                self.initialDelaySeconds = initialDelaySeconds
+                self.requiresCharging = requiresCharging
+                self.requiresNetworkConnectivity = requiresNetworkConnectivity
+
+                do {
+                    try BGTaskScheduler.shared.submit(request)
+                    result(true)
+                } catch {
+                    result(WMPError.bgTaskSchedulingFailed(error).asFlutterError)
+                }
+                return
+            } else {
+                result(WMPError.unhandledMethod(call.method).asFlutterError)
+            }
         case (ForegroundMethodChannel.Methods.CancelAllTasks.name, let .none):
             if #available(iOS 13.0, *) {
                 BGTaskScheduler.shared.cancelAllTaskRequests()
